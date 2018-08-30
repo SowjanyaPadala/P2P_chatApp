@@ -1,0 +1,188 @@
+<!doctype html>
+
+<html ng-app="p2pchatApp" lang="en">
+   <head>
+      <!-- Required meta tags -->
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+      <title>Peer 2 Peer Chat</title>
+      <!-- Bootstrap CSS -->
+      <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" crossorigin="anonymous">
+      <!--<link rel="stylesheet" href="https://getbootstrap.com/docs/4.0/examples/sign-in/signin.css" > -->
+      <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.6.9/angular.min.js"></script>
+      <!-- jQuery (necessary for Bootstrap's JavaScript plugins) -->
+      <script src="https://code.jquery.com/jquery-3.2.1.slim.min.js" crossorigin="anonymous"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.12.9/umd/popper.min.js" crossorigin="anonymous"></script>
+      <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js" crossorigin="anonymous"></script>
+      <script type="text/javascript">
+         // Define the `p2pchatApp` module
+         var p2pchatApp = angular.module('p2pchatApp', []);
+         var myuserid = '';
+         var myusername = '';
+
+         // Define the `login` controller on the `p2pchatApp` module
+         p2pchatApp.controller('logincontroller', ['$scope', '$http', function($scope, $http) {
+             $scope.formdata = {
+                 username: '',
+                 password: '',
+             };
+             $scope.submit = function() {
+
+                 $http.post('http://localhost:8080/login', JSON.stringify($scope.formdata))
+                     .then(function onSuccess(response) {
+                         // Handle success
+                         document.getElementById("loginform").style.display = "none";
+                         document.getElementById("maincontent").style.display = "inline";
+                         myuserid = response.data;
+                         myusername = $scope.formdata.username;
+                         console.log(myuserid);
+
+                         console.log("sucess");
+
+                         function userreload() {
+                             $scope.$emit('reloadusers')
+                         };
+                         userreload();
+
+                         function startlongpool() {
+                             $scope.$emit('startpooling')
+                         };
+                         startlongpool();
+
+                     }).catch(function onError(response) {
+                         // Handle error
+                         alert("invalid creds");
+                     });
+             };
+
+         }]);
+
+         // Define the `newsfeed` controller on the `p2pchatApp` module
+         p2pchatApp.controller('newsfeedcontroller', function newsfeedcontroller($scope, $http) {
+             $http.get("http://localhost:8080/news")
+                 .then(function(response) {
+                     $scope.articles = response.data.articles;
+                     console.log(response.data);
+                 });
+
+         });
+
+         p2pchatApp.controller('userlistcontroller', ['$scope', '$rootScope', '$http', '$timeout', function($scope, $rootScope, $http, $timeout) {
+
+             $rootScope.$on('reloadusers', function(event) {
+                 $http.get("http://localhost:8080/users?username=" + myusername)
+                     .then(function(response) {
+                         $scope.users = response.data;
+                         console.log(response.data);
+                     });
+             });
+
+             $rootScope.$on('longpoolmessages', function(event) {
+                 $http.get("http://localhost:8080/receivemsg?userid=" + myuserid)
+                     .then(function(response) {
+                         var inboxmsgs = response.data.data;
+                         console.log(inboxmsgs);
+                         console.log("sucesspool");
+                         var arrayLength = inboxmsgs.length;
+                          for (var i = 0; i < arrayLength; i++) {
+                           var temp = JSON.stringify(inboxmsgs[i]);
+                          // alert(temp);
+                           var jsonObject = JSON.parse(temp);
+                           for (k in jsonObject)
+                           //   alert(k);
+                           var chatareaid = "chatarea" + k;
+                           document.getElementById(chatareaid).value += "\n";
+                           document.getElementById(chatareaid).value += jsonObject[k];
+
+                          };
+                     });
+             });
+
+             function poolmsgtimer() {
+                 console.log("tick");
+                 $scope.$emit('longpoolmessages');
+                 $timeout(poolmsgtimer, 2000);
+             };
+
+
+             $rootScope.$on('startpooling', function(event) {
+                 poolmsgtimer();
+             });
+
+             $scope.text = '';
+             $scope.submit = function() {
+                 console.log(this.text);
+                 var chatareaid = "chatarea" + this.user.id;
+                 document.getElementById(chatareaid).value += "\n";
+                 document.getElementById(chatareaid).value += "*                 ";
+                 document.getElementById(chatareaid).value += this.text;
+                 console.log(this.user.id);
+                 var json = '{"from":' + myuserid + ',"to":' + this.user.id + ',"msg":"' + this.text + '"}';
+
+                 console.log(json);
+
+                 msgdata = JSON.parse(json);
+                 this.text = '';
+
+                 $http.post("http://localhost:8080/sendmessage", msgdata)
+                     .then(function(response) {
+                         console.log(response);
+                     });
+
+             };
+         }]);
+      </script>
+   </head>
+   <body>
+      <div ng-controller="logincontroller" id="loginform">
+         <form class="form-signin" ng-submit="submit()">
+            <h1 class="h3 mb-3 font-weight-normal">Please sign in</h1>
+            <label for="username" class="sr-only">Username</label>
+            <input type="text" id="username" class="form-control" placeholder="username"  ng-model="formdata.username" required autofocus>
+            <label for="inputPassword" class="sr-only">Password</label>
+            <input type="password" id="inputPassword" class="form-control" placeholder="Password" ng-model="formdata.password" required>   
+            <button class="btn btn-lg btn-primary btn-block" type="submit" >Sign in</button>
+         </form>
+      </div>
+      <div class="container-fluid" id="maincontent" style="display:none">
+         <div class="row">
+            <div class="col-sm-9">
+               <main class="jumbotron">
+                  <h1> Peer 2 Peer chat App </h1>
+                  <div id="accordion" ng-controller="userlistcontroller" class="row">
+                     <div class="col-sm-3" >
+                        <ul class="list-group">
+                           <li ng-repeat="user in users" class="list-group-item list-group-item-action" id={{user.id}} data-toggle="collapse" data-target="#c{{user.id}}" aria-expanded="false" aria-controls="c{{user.id}}">
+                              <p> {{user.username}}</p>
+                           </li>
+                        </ul>
+                     </div>
+                     <div class="col-sm-4">
+                        <div ng-repeat="user in users" class="collapse" id="c{{user.id}}" aria-labelledby={{user.id}} data-parent="#accordion">
+                           <textarea class="form-control" type="text" id="chatarea{{user.id}}" rows="8"></textarea>
+                           <form class="form-inline" ng-submit="submit()">
+                              <input class="form-control" rows="2" id="msgbox{{user.id}}" ng-model="text" type="text" name="text"></input>
+                              <button type="submit" class="btn btn-primary mb-2" value="Submit"> send </button>
+                           </form>
+                        </div>
+                     </div>
+                  </div>
+               </main>
+            </div>
+            <div class="col-sm-3" ng-controller="newsfeedcontroller">
+               <div class="card border-dark "  >
+                  <div class="card-header">News Feed</div>
+                  <div class="card-body text-dark">
+                     <ul class="list-group">
+                        <li ng-repeat="news in articles" class="list-group-item list-group-item-action">
+                           <b><span>  <a href={{news.url}} target="_blank"> {{news.title}}</a></span></b>
+                           <p>{{news.description}}</p>
+                        </li>
+                     </ul>
+                  </div>
+               </div>
+            </div>
+         </div>
+      </div>
+   </body>
+</html>
